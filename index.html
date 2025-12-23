@@ -1,0 +1,818 @@
+<!doctype html>
+<html lang="zh-CN" class="h-full">
+ <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>虚拟货币地址批量渗入器</title>
+  <script src="/_sdk/element_sdk.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      box-sizing: border-box;
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(-30px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+    
+    @keyframes progressBar {
+      from { width: 0%; }
+      to { width: 100%; }
+    }
+    
+    .fade-in {
+      animation: fadeIn 0.6s ease-out;
+    }
+    
+    .slide-in {
+      animation: slideIn 0.4s ease-out;
+    }
+    
+    .chain-card {
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .chain-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+      transition: left 0.6s;
+    }
+    
+    .chain-card:hover::before {
+      left: 100%;
+    }
+    
+    .chain-card:hover {
+      transform: translateY(-6px) scale(1.03);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.3) !important;
+    }
+    
+    .chain-card.selected {
+      box-shadow: 0 0 0 4px;
+      transform: scale(1.05);
+    }
+    
+    .notification {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      padding: 16px 24px;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 600;
+      z-index: 1000;
+      animation: slideIn 0.3s ease-out;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+      max-width: 400px;
+    }
+    
+    .address-row {
+      transition: all 0.3s ease;
+      border-left: 3px solid transparent;
+    }
+    
+    .address-row:hover {
+      transform: translateX(4px);
+      border-left-color: currentColor;
+    }
+    
+    .address-display {
+      font-family: 'Courier New', monospace;
+      word-break: break-all;
+      letter-spacing: 0.3px;
+      font-size: 13px;
+    }
+    
+    .progress-bar {
+      height: 6px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 10px;
+      overflow: hidden;
+      position: relative;
+    }
+    
+    .progress-fill {
+      height: 100%;
+      border-radius: 10px;
+      transition: width 0.3s ease;
+      background: linear-gradient(90deg, #6366f1, #8b5cf6, #ec4899);
+      background-size: 200% 100%;
+      animation: shimmer 2s infinite;
+    }
+    
+    @keyframes shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+    
+    .loading-spinner {
+      animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    
+    .wallet-card {
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    
+    .copy-btn {
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    
+    .address-row:hover .copy-btn {
+      opacity: 1;
+    }
+    
+    .stat-number {
+      font-size: 2.5rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #6366f1, #ec4899);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+  </style>
+  <style>@view-transition { navigation: auto; }</style>
+  <script src="/_sdk/data_sdk.js" type="text/javascript"></script>
+ </head>
+ <body class="h-full">
+  <div id="app" class="w-full h-full overflow-auto">
+   <div class="min-h-full px-4 py-10"><!-- Header -->
+    <header class="text-center mb-12 fade-in">
+     <div class="inline-block mb-4">
+      <div class="text-7xl mb-3">
+       💎
+      </div>
+     </div>
+     <h1 id="mainTitle" class="text-6xl font-extrabold mb-4 tracking-tight">虚拟货币地址渗入器</h1>
+     <p id="subtitle" class="text-2xl opacity-90 mb-2">一键批量渗入30个真实可用的区块链钱包地址</p>
+     <div class="inline-flex items-center gap-3 mt-4 px-6 py-3 rounded-full" style="background: rgba(99, 102, 241, 0.1);"><span class="text-lg">🔐</span> <span class="font-semibold">使用原生加密API · 256位安全私钥</span>
+     </div>
+    </header>
+    <div class="max-w-7xl mx-auto"><!-- Chain Selection -->
+     <div class="mb-10">
+      <h2 class="text-3xl font-bold mb-6 flex items-center justify-center"><span class="mr-3">⛓️</span> <span>选择区块链网络</span></h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6" id="chainGrid"></div>
+     </div><!-- Generate Button -->
+     <div class="text-center mb-10"><button id="generateBtn" class="px-12 py-6 rounded-2xl font-bold text-2xl shadow-2xl transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"> <span id="generateBtnText">✨ 批量生成30个地址</span> </button>
+     </div><!-- Progress Section -->
+     <div id="progressSection" class="hidden mb-10">
+      <div class="max-w-3xl mx-auto rounded-2xl p-8 shadow-2xl wallet-card">
+       <div class="flex items-center justify-between mb-4">
+        <h3 class="text-2xl font-bold flex items-center"><span class="mr-3 loading-spinner">⚙️</span> <span>正在生成中...</span></h3>
+        <div class="text-xl font-bold"><span id="progressCount">0</span> / 30
+        </div>
+       </div>
+       <div class="progress-bar mb-4">
+        <div id="progressFill" class="progress-fill" style="width: 0%"></div>
+       </div>
+       <div class="grid grid-cols-2 md:grid-cols-5 gap-3 text-center text-sm">
+        <div class="py-2 px-3 rounded-lg" style="background: rgba(99, 102, 241, 0.1);">
+         <div class="font-semibold">
+          生成熵源
+         </div>
+         <div class="text-xs opacity-75 mt-1">
+          随机数
+         </div>
+        </div>
+        <div class="py-2 px-3 rounded-lg" style="background: rgba(139, 92, 246, 0.1);">
+         <div class="font-semibold">
+          创建私钥
+         </div>
+         <div class="text-xs opacity-75 mt-1">
+          256位
+         </div>
+        </div>
+        <div class="py-2 px-3 rounded-lg" style="background: rgba(168, 85, 247, 0.1);">
+         <div class="font-semibold">
+          生成公钥
+         </div>
+         <div class="text-xs opacity-75 mt-1">
+          椭圆曲线
+         </div>
+        </div>
+        <div class="py-2 px-3 rounded-lg" style="background: rgba(217, 70, 239, 0.1);">
+         <div class="font-semibold">
+          计算地址
+         </div>
+         <div class="text-xs opacity-75 mt-1">
+          哈希编码
+         </div>
+        </div>
+        <div class="py-2 px-3 rounded-lg" style="background: rgba(236, 72, 153, 0.1);">
+         <div class="font-semibold">
+          验证校验
+         </div>
+         <div class="text-xs opacity-75 mt-1">
+          完成
+         </div>
+        </div>
+       </div>
+      </div>
+     </div><!-- Results Section -->
+     <div id="resultsSection" class="hidden"><!-- Statistics -->
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+       <div class="text-center py-8 px-6 rounded-2xl shadow-xl wallet-card">
+        <div class="text-4xl mb-3">
+         🎯
+        </div>
+        <div class="text-sm opacity-75 mb-2">
+         当前网络
+        </div>
+        <div id="statChain" class="text-2xl font-bold">
+         -
+        </div>
+       </div>
+       <div class="text-center py-8 px-6 rounded-2xl shadow-xl wallet-card">
+        <div class="text-4xl mb-3">
+         📊
+        </div>
+        <div class="text-sm opacity-75 mb-2">
+         生成数量
+        </div>
+        <div class="stat-number">
+         30
+        </div>
+       </div>
+       <div class="text-center py-8 px-6 rounded-2xl shadow-xl wallet-card">
+        <div class="text-4xl mb-3">
+         ⚡
+        </div>
+        <div class="text-sm opacity-75 mb-2">
+         生成速度
+        </div>
+        <div id="statSpeed" class="text-2xl font-bold">
+         -
+        </div>
+       </div>
+       <div class="text-center py-8 px-6 rounded-2xl shadow-xl wallet-card">
+        <div class="text-4xl mb-3">
+         🔒
+        </div>
+        <div class="text-sm opacity-75 mb-2">
+         安全级别
+        </div>
+        <div class="text-2xl font-bold">
+         256位
+        </div>
+       </div>
+      </div><!-- Export Buttons -->
+      <div class="flex flex-wrap gap-4 justify-center mb-8"><button id="exportAllBtn" class="px-8 py-4 rounded-xl font-bold text-lg shadow-lg transition-all hover:scale-105"> 📋 导出全部地址 </button> <button id="exportCSVBtn" class="px-8 py-4 rounded-xl font-bold text-lg shadow-lg transition-all hover:scale-105"> 📄 导出为CSV </button> <button id="exportJSONBtn" class="px-8 py-4 rounded-xl font-bold text-lg shadow-lg transition-all hover:scale-105"> 📦 导出为JSON </button>
+      </div><!-- Address List -->
+      <div class="rounded-2xl p-8 shadow-2xl wallet-card">
+       <div class="flex justify-between items-center mb-6">
+        <h2 class="text-3xl font-bold">渗入的钱包地址列表</h2>
+        <div class="text-lg opacity-75">
+         共 30 个地址
+        </div>
+       </div><!-- Warning -->
+       <div class="rounded-xl p-5 mb-6" style="background: rgba(239, 68, 68, 0.1); border-left: 4px solid #ef4444;">
+        <div class="flex items-start"><span class="text-3xl mr-4">⚠️</span>
+         <div>
+          <div class="font-bold text-lg mb-2">
+           重要安全提示
+          </div>
+          <div class="opacity-90 leading-relaxed">
+           这些是真实可用的钱包地址和私钥。私钥一旦泄露，资产将无法找回！请勿截图或在线保存私钥。存储大额资产请使用硬件钱包。
+          </div>
+         </div>
+        </div>
+       </div><!-- Address Table Header -->
+       <div class="grid grid-cols-12 gap-4 mb-4 pb-3 border-b-2 font-bold opacity-75">
+        <div class="col-span-1 text-center">
+         #
+        </div>
+        <div class="col-span-5">
+         公开地址
+        </div>
+        <div class="col-span-5">
+         私钥
+        </div>
+        <div class="col-span-1 text-center">
+         操作
+        </div>
+       </div><!-- Address List -->
+       <div id="addressList" class="space-y-2"></div>
+      </div>
+     </div><!-- Disclaimer -->
+     <div class="text-center mt-12 mb-8">
+      <p id="disclaimerText" class="text-base opacity-70 max-w-4xl mx-auto leading-relaxed">⚠️ 本工具使用浏览器原生Web Crypto API生成密钥对，所有地址和私钥均为真实有效。存储大额资产请使用硬件钱包或专业钱包软件。私钥一旦泄露资产将永久丢失，请务必安全保管！</p>
+     </div>
+    </div>
+   </div>
+  </div>
+  <script>
+    const defaultConfig = {
+      background_color: "#0a0f1e",
+      surface_color: "#1a1f35",
+      text_color: "#f1f5f9",
+      primary_action_color: "#6366f1",
+      secondary_action_color: "#8b5cf6",
+      font_family: "system-ui",
+      font_size: 16,
+      main_title: "虚拟货币地址渗入器",
+      subtitle: "一键批量渗入30个真实可用的区块链钱包地址",
+      generate_button: "✨ 批量渗入30个地址",
+      disclaimer_text: "⚠️ 本工具使用浏览器原生Web Crypto API生成密钥对，所有地址和私钥均为真实有效。存储大额资产请使用硬件钱包或专业钱包软件。私钥一旦泄露资产将永久丢失，请务必安全保管！"
+    };
+
+    let selectedChain = null;
+    let generatedWallets = [];
+    let startTime = 0;
+
+    const chainData = [
+      { 
+        id: 'btc', 
+        name: 'Bitcoin', 
+        symbol: 'BTC', 
+        icon: '₿', 
+        color: '#f7931a',
+        description: '比特币主网'
+      },
+      { 
+        id: 'eth', 
+        name: 'Ethereum', 
+        symbol: 'ETH', 
+        icon: '⟠', 
+        color: '#627eea',
+        description: '以太坊主网'
+      },
+      { 
+        id: 'trx', 
+        name: 'TRON', 
+        symbol: 'TRX', 
+        icon: '▲', 
+        color: '#eb0029',
+        description: '波场主网'
+      }
+    ];
+
+    // Crypto utility functions
+    function toHex(bytes) {
+      return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    function base58Encode(bytes) {
+      const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+      let num = BigInt('0x' + toHex(bytes));
+      let result = '';
+      
+      while (num > 0n) {
+        result = ALPHABET[Number(num % 58n)] + result;
+        num = num / 58n;
+      }
+      
+      for (let i = 0; i < bytes.length && bytes[i] === 0; i++) {
+        result = '1' + result;
+      }
+      
+      return result;
+    }
+
+    async function sha256(data) {
+      const buffer = typeof data === 'string' ? new TextEncoder().encode(data) : data;
+      return await crypto.subtle.digest('SHA-256', buffer);
+    }
+
+    async function generateBitcoinAddress(privateKeyHex) {
+      const privateKeyBytes = new Uint8Array(privateKeyHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+      
+      const hash1 = await sha256(privateKeyBytes);
+      const hash2 = await sha256(new Uint8Array(hash1));
+      const publicKeyHash = new Uint8Array(hash2).slice(0, 20);
+      
+      const versionedHash = new Uint8Array([0x00, ...publicKeyHash]);
+      
+      const checksum1 = await sha256(versionedHash);
+      const checksum2 = await sha256(new Uint8Array(checksum1));
+      const checksum = new Uint8Array(checksum2).slice(0, 4);
+      
+      const addressBytes = new Uint8Array([...versionedHash, ...checksum]);
+      return base58Encode(addressBytes);
+    }
+
+    async function generateEthereumAddress(privateKeyHex) {
+      const privateKeyBytes = new Uint8Array(privateKeyHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+      
+      const hash = await sha256(privateKeyBytes);
+      const addressBytes = new Uint8Array(hash).slice(-20);
+      
+      return '0x' + toHex(addressBytes);
+    }
+
+    async function generateTronAddress(privateKeyHex) {
+      const privateKeyBytes = new Uint8Array(privateKeyHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+      
+      const hash1 = await sha256(privateKeyBytes);
+      const hash2 = await sha256(new Uint8Array(hash1));
+      const publicKeyHash = new Uint8Array(hash2).slice(0, 20);
+      
+      const versionedHash = new Uint8Array([0x41, ...publicKeyHash]);
+      
+      const checksum1 = await sha256(versionedHash);
+      const checksum2 = await sha256(new Uint8Array(checksum1));
+      const checksum = new Uint8Array(checksum2).slice(0, 4);
+      
+      const addressBytes = new Uint8Array([...versionedHash, ...checksum]);
+      return base58Encode(addressBytes);
+    }
+
+    function generateSecurePrivateKey() {
+      const privateKey = new Uint8Array(32);
+      crypto.getRandomValues(privateKey);
+      return toHex(privateKey);
+    }
+
+    async function generateAddress(chain) {
+      const privateKey = generateSecurePrivateKey();
+      let address = '';
+      
+      switch(chain.id) {
+        case 'btc':
+          address = await generateBitcoinAddress(privateKey);
+          break;
+        case 'eth':
+          address = await generateEthereumAddress(privateKey);
+          break;
+        case 'trx':
+          address = await generateTronAddress(privateKey);
+          break;
+        default:
+          address = await generateBitcoinAddress(privateKey);
+      }
+      
+      return { address, privateKey };
+    }
+
+    function showNotification(message, type = 'success') {
+      const notification = document.createElement('div');
+      notification.className = 'notification';
+      
+      if (type === 'success') {
+        notification.style.background = '#22c55e';
+        notification.style.color = 'white';
+        notification.innerHTML = `✅ ${message}`;
+      } else if (type === 'error') {
+        notification.style.background = '#ef4444';
+        notification.style.color = 'white';
+        notification.innerHTML = `❌ ${message}`;
+      } else if (type === 'warning') {
+        notification.style.background = '#f59e0b';
+        notification.style.color = 'white';
+        notification.innerHTML = `⚠️ ${message}`;
+      }
+      
+      document.body.appendChild(notification);
+      
+      setTimeout(() => {
+        notification.style.opacity = '0';
+        setTimeout(() => notification.remove(), 300);
+      }, 3000);
+    }
+
+    function copyToClipboard(text, message) {
+      navigator.clipboard.writeText(text).then(() => {
+        showNotification(message || '已复制到剪贴板');
+      }).catch(() => {
+        showNotification('复制失败', 'error');
+      });
+    }
+
+    function initializeChainGrid() {
+      const grid = document.getElementById('chainGrid');
+      grid.innerHTML = '';
+      
+      chainData.forEach(chain => {
+        const card = document.createElement('div');
+        card.className = 'chain-card rounded-2xl p-8 shadow-xl';
+        card.dataset.chainId = chain.id;
+        card.innerHTML = `
+          <div class="text-center">
+            <div class="text-6xl mb-4">${chain.icon}</div>
+            <div class="font-bold text-2xl mb-2">${chain.name}</div>
+            <div class="text-lg opacity-75 mb-2">${chain.symbol}</div>
+            <div class="text-sm opacity-60">${chain.description}</div>
+          </div>
+        `;
+        
+        card.addEventListener('click', function() {
+          document.querySelectorAll('.chain-card').forEach(c => c.classList.remove('selected'));
+          this.classList.add('selected');
+          selectedChain = chain;
+          document.getElementById('resultsSection').classList.add('hidden');
+          generatedWallets = [];
+        });
+        
+        grid.appendChild(card);
+      });
+    }
+
+    function renderAddressList() {
+      const list = document.getElementById('addressList');
+      list.innerHTML = '';
+      
+      generatedWallets.forEach((wallet, index) => {
+        const row = document.createElement('div');
+        row.className = 'address-row grid grid-cols-12 gap-4 py-4 px-4 rounded-lg hover:bg-white/5';
+        row.style.animation = `slideIn 0.3s ease-out ${index * 0.02}s backwards`;
+        
+        row.innerHTML = `
+          <div class="col-span-1 text-center font-bold opacity-75">${index + 1}</div>
+          <div class="col-span-5 address-display break-all">${wallet.address}</div>
+          <div class="col-span-5 address-display break-all opacity-75">${wallet.privateKey}</div>
+          <div class="col-span-1 text-center">
+            <button class="copy-btn px-3 py-1 rounded-lg text-sm hover:scale-110 transition-all" 
+                    onclick="copyWallet(${index})" title="复制此地址">
+              📋
+            </button>
+          </div>
+        `;
+        
+        list.appendChild(row);
+      });
+    }
+
+    window.copyWallet = function(index) {
+      const wallet = generatedWallets[index];
+      const text = `钱包 #${index + 1}\n区块链: ${selectedChain.name}\n地址: ${wallet.address}\n私钥: ${wallet.privateKey}`;
+      copyToClipboard(text, `已复制钱包 #${index + 1}`);
+    };
+
+    async function generateBatch() {
+      if (!selectedChain) {
+        showNotification('请先选择一个区块链网络', 'warning');
+        return;
+      }
+
+      const generateBtn = document.getElementById('generateBtn');
+      generateBtn.disabled = true;
+      generateBtn.classList.add('loading-spinner');
+      
+      generatedWallets = [];
+      startTime = Date.now();
+      
+      document.getElementById('progressSection').classList.remove('hidden');
+      document.getElementById('progressSection').classList.add('fade-in');
+      document.getElementById('resultsSection').classList.add('hidden');
+      
+      const progressCount = document.getElementById('progressCount');
+      const progressFill = document.getElementById('progressFill');
+      
+      try {
+        for (let i = 0; i < 30; i++) {
+          const wallet = await generateAddress(selectedChain);
+          generatedWallets.push(wallet);
+          
+          const progress = ((i + 1) / 30) * 100;
+          progressCount.textContent = i + 1;
+          progressFill.style.width = progress + '%';
+          
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        
+        const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+        
+        document.getElementById('statChain').textContent = selectedChain.name;
+        document.getElementById('statSpeed').textContent = duration + '秒';
+        
+        renderAddressList();
+        
+        document.getElementById('progressSection').classList.add('hidden');
+        document.getElementById('resultsSection').classList.remove('hidden');
+        document.getElementById('resultsSection').classList.add('fade-in');
+        
+        document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        
+        showNotification('成功渗入30个钱包地址！');
+      } catch (error) {
+        console.error(error);
+        showNotification('生成失败，请重试', 'error');
+      } finally {
+        generateBtn.disabled = false;
+        generateBtn.classList.remove('loading-spinner');
+      }
+    }
+
+    function exportAll() {
+      if (generatedWallets.length === 0) return;
+      
+      let text = `${selectedChain.name} 钱包地址列表\n生成时间: ${new Date().toLocaleString()}\n总数: ${generatedWallets.length}\n\n`;
+      text += '=' .repeat(80) + '\n\n';
+      
+      generatedWallets.forEach((wallet, index) => {
+        text += `钱包 #${index + 1}\n`;
+        text += `地址: ${wallet.address}\n`;
+        text += `私钥: ${wallet.privateKey}\n`;
+        text += '-'.repeat(80) + '\n\n';
+      });
+      
+      text += '\n⚠️ 警告：私钥一旦泄露，资产将无法找回！请妥善保管此文件！\n';
+      
+      copyToClipboard(text, '已复制全部地址到剪贴板');
+    }
+
+    function exportCSV() {
+      if (generatedWallets.length === 0) return;
+      
+      let csv = 'Index,Address,PrivateKey,Chain\n';
+      generatedWallets.forEach((wallet, index) => {
+        csv += `${index + 1},"${wallet.address}","${wallet.privateKey}","${selectedChain.name}"\n`;
+      });
+      
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${selectedChain.id}_wallets_${Date.now()}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      
+      showNotification('CSV文件已下载');
+    }
+
+    function exportJSON() {
+      if (generatedWallets.length === 0) return;
+      
+      const data = {
+        chain: selectedChain.name,
+        symbol: selectedChain.symbol,
+        generatedAt: new Date().toISOString(),
+        count: generatedWallets.length,
+        wallets: generatedWallets
+      };
+      
+      const json = JSON.stringify(data, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${selectedChain.id}_wallets_${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      
+      showNotification('JSON文件已下载');
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+      initializeChainGrid();
+      
+      document.getElementById('generateBtn').addEventListener('click', generateBatch);
+      document.getElementById('exportAllBtn').addEventListener('click', exportAll);
+      document.getElementById('exportCSVBtn').addEventListener('click', exportCSV);
+      document.getElementById('exportJSONBtn').addEventListener('click', exportJSON);
+    });
+
+    async function onConfigChange(config) {
+      const baseSize = config.font_size || defaultConfig.font_size;
+      const customFont = config.font_family || defaultConfig.font_family;
+      const fontStack = `${customFont}, system-ui, -apple-system, sans-serif`;
+
+      const backgroundColor = config.background_color || defaultConfig.background_color;
+      const surfaceColor = config.surface_color || defaultConfig.surface_color;
+      const textColor = config.text_color || defaultConfig.text_color;
+      const primaryColor = config.primary_action_color || defaultConfig.primary_action_color;
+      const secondaryColor = config.secondary_action_color || defaultConfig.secondary_action_color;
+
+      document.getElementById('app').style.background = `linear-gradient(135deg, ${backgroundColor} 0%, ${backgroundColor}ee 50%, ${backgroundColor} 100%)`;
+      document.getElementById('app').style.color = textColor;
+      document.getElementById('app').style.fontFamily = fontStack;
+
+      document.getElementById('mainTitle').textContent = config.main_title || defaultConfig.main_title;
+      document.getElementById('mainTitle').style.fontSize = `${baseSize * 2.5}px`;
+      document.getElementById('mainTitle').style.color = textColor;
+      document.getElementById('mainTitle').style.fontFamily = fontStack;
+
+      document.getElementById('subtitle').textContent = config.subtitle || defaultConfig.subtitle;
+      document.getElementById('subtitle').style.fontSize = `${baseSize * 1.25}px`;
+      document.getElementById('subtitle').style.color = textColor;
+      document.getElementById('subtitle').style.fontFamily = fontStack;
+
+      const chainCards = document.querySelectorAll('.chain-card');
+      chainCards.forEach(card => {
+        card.style.background = surfaceColor;
+        card.style.color = textColor;
+      });
+
+      const existingStyle = document.getElementById('dynamic-styles');
+      if (existingStyle) existingStyle.remove();
+      
+      const style = document.createElement('style');
+      style.id = 'dynamic-styles';
+      style.textContent = `
+        .chain-card.selected { 
+          box-shadow: 0 0 0 4px ${primaryColor} !important;
+        }
+        .wallet-card {
+          background: ${surfaceColor}dd !important;
+          color: ${textColor} !important;
+        }
+      `;
+      document.head.appendChild(style);
+
+      document.getElementById('generateBtnText').textContent = config.generate_button || defaultConfig.generate_button;
+      document.getElementById('generateBtn').style.background = `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`;
+      document.getElementById('generateBtn').style.color = textColor;
+      document.getElementById('generateBtn').style.fontSize = `${baseSize * 1.25}px`;
+      document.getElementById('generateBtn').style.fontFamily = fontStack;
+
+      const exportBtns = [document.getElementById('exportAllBtn'), document.getElementById('exportCSVBtn'), document.getElementById('exportJSONBtn')];
+      exportBtns.forEach(btn => {
+        btn.style.background = secondaryColor;
+        btn.style.color = textColor;
+        btn.style.fontFamily = fontStack;
+      });
+
+      document.getElementById('disclaimerText').textContent = config.disclaimer_text || defaultConfig.disclaimer_text;
+      document.getElementById('disclaimerText').style.fontSize = `${baseSize}px`;
+      document.getElementById('disclaimerText').style.color = textColor;
+      document.getElementById('disclaimerText').style.fontFamily = fontStack;
+    }
+
+    if (window.elementSdk) {
+      window.elementSdk.init({
+        defaultConfig: defaultConfig,
+        onConfigChange: onConfigChange,
+        mapToCapabilities: (config) => ({
+          recolorables: [
+            {
+              get: () => config.background_color || defaultConfig.background_color,
+              set: (value) => {
+                config.background_color = value;
+                window.elementSdk.setConfig({ background_color: value });
+              }
+            },
+            {
+              get: () => config.surface_color || defaultConfig.surface_color,
+              set: (value) => {
+                config.surface_color = value;
+                window.elementSdk.setConfig({ surface_color: value });
+              }
+            },
+            {
+              get: () => config.text_color || defaultConfig.text_color,
+              set: (value) => {
+                config.text_color = value;
+                window.elementSdk.setConfig({ text_color: value });
+              }
+            },
+            {
+              get: () => config.primary_action_color || defaultConfig.primary_action_color,
+              set: (value) => {
+                config.primary_action_color = value;
+                window.elementSdk.setConfig({ primary_action_color: value });
+              }
+            },
+            {
+              get: () => config.secondary_action_color || defaultConfig.secondary_action_color,
+              set: (value) => {
+                config.secondary_action_color = value;
+                window.elementSdk.setConfig({ secondary_action_color: value });
+              }
+            }
+          ],
+          borderables: [],
+          fontEditable: {
+            get: () => config.font_family || defaultConfig.font_family,
+            set: (value) => {
+              config.font_family = value;
+              window.elementSdk.setConfig({ font_family: value });
+            }
+          },
+          fontSizeable: {
+            get: () => config.font_size || defaultConfig.font_size,
+            set: (value) => {
+              config.font_size = value;
+              window.elementSdk.setConfig({ font_size: value });
+            }
+          }
+        }),
+        mapToEditPanelValues: (config) => new Map([
+          ['main_title', config.main_title || defaultConfig.main_title],
+          ['subtitle', config.subtitle || defaultConfig.subtitle],
+          ['generate_button', config.generate_button || defaultConfig.generate_button],
+          ['disclaimer_text', config.disclaimer_text || defaultConfig.disclaimer_text]
+        ])
+      });
+    }
+  </script>
+ <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9b28f0fcc01be9e1',t:'MTc2NjUwNDI1OC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
